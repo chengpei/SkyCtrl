@@ -18,6 +18,7 @@
 /* USER CODE END Header */
 /* Includes ------------------------------------------------------------------*/
 #include "main.h"
+#include "dma.h"
 #include "i2c.h"
 #include "tim.h"
 #include "usart.h"
@@ -72,6 +73,9 @@ uint8_t rx1_byte, rx2_byte;          // 单字节接收缓存
 uint8_t uart2_buf[256];   // 缓存 PC 发来的数据
 uint16_t uart2_idx = 0;              // 缓冲区索引
 int global_step = 0;  // 定义
+uint8_t esp_passthrough_enabled = 0;
+uint8_t heartbeat_tick = 0;
+uint8_t tcp_heartbeat_flag = 0;
 /* USER CODE END 0 */
 
 /**
@@ -103,14 +107,17 @@ int main(void)
 
   /* Initialize all configured peripherals */
   MX_GPIO_Init();
+  MX_DMA_Init();
   MX_TIM3_Init();
   MX_I2C1_Init();
   MX_TIM2_Init();
   MX_USART1_UART_Init();
   MX_USART2_UART_Init();
+  MX_TIM1_Init();
   /* USER CODE BEGIN 2 */
   HAL_UART_Receive_IT(&huart1, &rx1_byte, 1);
   HAL_UART_Receive_IT(&huart2, &rx2_byte, 1);
+  HAL_TIM_Base_Start_IT(&htim1);
   // HAL_TIM_Base_Start_IT(&htim2);
   HAL_GPIO_WritePin(GPIOC, GPIO_PIN_13, GPIO_PIN_SET);
 
@@ -139,19 +146,24 @@ int main(void)
   /* USER CODE BEGIN WHILE */
   while (1)
   {
+    if (tcp_heartbeat_flag)
+    {
+      tcp_heartbeat_flag = 0;
+      HAL_UART_Transmit_IT(&huart1, "PING\r\n", 6);
+    }
     if(ESP01S_IRQ_DataReady())
     {
       ControlInput_t ci = ESP01S_IRQ_GetControlInput();
       FlightControl_SetInput(&ci);
       HAL_GPIO_TogglePin(GPIOC, GPIO_PIN_13);
       if (ci.btn_yaw_cw == 1) {
-        Motor_SetAll(1100);
+        Motor_SetAll(1250);
       } else if (ci.btn_yaw_ccw == 1) {
-        Motor_SetAll(1200);
+        Motor_SetAll(1500);
       } else if (ci.btn_up == 1) {
-        Motor_SetAll(1400);
+        Motor_SetAll(1750);
       } else if (ci.btn_down == 1) {
-        Motor_SetAll(1300);
+        Motor_SetAll(2000);
       } else {
         Motor_SetAll(1000);
       }
@@ -216,6 +228,15 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
     IMU_Update(&imu); // 每 2ms 调用一次
     Mahony_Update(&imu, 0.002f, &att); // dt = 2ms
     imu_attitude_ready_flag = 1;
+  } else if (htim->Instance == TIM1) {
+    // 心跳处理
+    heartbeat_tick++;
+    if (heartbeat_tick >= 30)
+    {
+      heartbeat_tick = 0;
+      tcp_heartbeat_flag = 1;
+    }
+
   }
 }
 void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart)
@@ -224,18 +245,19 @@ void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart)
   {
     if (rx1_byte == '>')
     {
+      esp_passthrough_enabled = 1;
       HAL_GPIO_TogglePin(GPIOC, GPIO_PIN_13);
     }
     HAL_UART_Transmit_IT(&huart2, &rx1_byte, 1);
-    ESP01S_IRQ_ProcessByte(rx1_byte);
+    if (esp_passthrough_enabled) {
+      ESP01S_IRQ_ProcessByte(rx1_byte);
+    }
     HAL_UART_Receive_IT(&huart1, &rx1_byte, 1);
-
   }
   else if(huart->Instance == USART2)
   {
     // 缓存数据
     uart2_buf[uart2_idx++] = rx2_byte;
-
     // 检查是否遇到 \r 或 \n
     if(rx2_byte == '\n' || uart2_idx >= 256)
     {
