@@ -104,13 +104,16 @@ ESP01S_Status_t ESP01S_Init(UART_HandleTypeDef *huart, uint32_t timeout_ms)
     HAL_Delay(100);
     HAL_GPIO_WritePin(GPIOA, GPIO_PIN_11, GPIO_PIN_SET);
     ESP_UART = huart;
-    // ESP_SendCmd("AT+RST", timeout_ms);
+    ESP_SendCmd("AT+RST", timeout_ms);
     return ESP01S_OK;
 }
 
 ESP01S_Status_t ESP01S_ConnectWiFi()
 {
-    ESP_SendCmd("AT+CWJAP=\"WIFI-3\",\"dsJChangxin.\"", 10000);
+    // WIFI-3/dsJChangxin.
+    // iPhone13mini/chengpei
+    // ax30002601/chengpei
+    ESP_SendCmd("AT+CWJAP=\"iPhone13mini\",\"chengpei\"", 10000); //
     return ESP01S_OK;
 }
 

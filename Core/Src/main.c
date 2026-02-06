@@ -76,6 +76,7 @@ int global_step = 0;  // 定义
 uint8_t esp_passthrough_enabled = 0;
 uint8_t heartbeat_tick = 0;
 uint8_t tcp_heartbeat_flag = 0;
+static const uint8_t ping_msg[] = "PING\r\n";
 /* USER CODE END 0 */
 
 /**
@@ -119,7 +120,6 @@ int main(void)
   HAL_UART_Receive_IT(&huart2, &rx2_byte, 1);
   HAL_TIM_Base_Start_IT(&htim1);
   // HAL_TIM_Base_Start_IT(&htim2);
-  HAL_GPIO_WritePin(GPIOC, GPIO_PIN_13, GPIO_PIN_SET);
 
   // 初始化ESP01S
   status = ESP01S_Init(&huart1, 2000);
@@ -149,21 +149,21 @@ int main(void)
     if (tcp_heartbeat_flag)
     {
       tcp_heartbeat_flag = 0;
-      HAL_UART_Transmit_IT(&huart1, "PING\r\n", 6);
+      HAL_UART_Transmit_IT(&huart1, ping_msg, 6);
     }
     if(ESP01S_IRQ_DataReady())
     {
       ControlInput_t ci = ESP01S_IRQ_GetControlInput();
       FlightControl_SetInput(&ci);
       HAL_GPIO_TogglePin(GPIOC, GPIO_PIN_13);
-      if (ci.btn_yaw_cw == 1) {
+      if (ci.btn_yaw_ccw == 1) { // 左
+        Motor_SetAll(1125);
+      } else if (ci.btn_yaw_cw == 1) { // 右
         Motor_SetAll(1250);
-      } else if (ci.btn_yaw_ccw == 1) {
+      } else if (ci.btn_down == 1) { // 下
+        Motor_SetAll(1375);
+      } else if (ci.btn_up == 1) { // 上
         Motor_SetAll(1500);
-      } else if (ci.btn_up == 1) {
-        Motor_SetAll(1750);
-      } else if (ci.btn_down == 1) {
-        Motor_SetAll(2000);
       } else {
         Motor_SetAll(1000);
       }
@@ -236,7 +236,6 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
       heartbeat_tick = 0;
       tcp_heartbeat_flag = 1;
     }
-
   }
 }
 void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart)
