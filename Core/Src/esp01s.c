@@ -41,6 +41,19 @@ static ESP01S_Status_t ESP_SendCmd(const char *cmd, uint32_t wait_ms)
 
 static void parse_packet(const char *p)
 {
+    if (strncmp(p, "STOP", 4) == 0) {
+        // 执行急停逻辑
+        irq_ctrl_input.stick_x     = 0;
+        irq_ctrl_input.stick_y     = 0;
+        irq_ctrl_input.btn_up      = 0;
+        irq_ctrl_input.btn_down    = 0;
+        irq_ctrl_input.btn_yaw_cw  = 0;
+        irq_ctrl_input.btn_yaw_ccw = 0;
+        FlightControl_Disarm();
+        irq_data_ready = true;
+        return;
+    }
+
     // 1️⃣ 必须以 "ROLL=" 开头，否则直接忽略
     if (strncmp(p, "ROLL=", 5) != 0)
         return;
@@ -113,7 +126,7 @@ ESP01S_Status_t ESP01S_ConnectWiFi()
     // WIFI-3/dsJChangxin.
     // iPhone13mini/chengpei
     // ax30002601/chengpei
-    ESP_SendCmd("AT+CWJAP=\"iPhone13mini\",\"chengpei\"", 10000); //
+    ESP_SendCmd("AT+CWJAP=\"ax30002601\",\"chengpei\"", 10000); //
     return ESP01S_OK;
 }
 
