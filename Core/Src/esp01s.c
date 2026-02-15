@@ -126,7 +126,7 @@ ESP01S_Status_t ESP01S_ConnectWiFi()
     // WIFI-3/dsJChangxin.
     // iPhone13mini/chengpei
     // ax30002601/chengpei
-    ESP_SendCmd("AT+CWJAP=\"ax30002601\",\"chengpei\"", 10000); //
+    ESP_SendCmd("AT+CWJAP=\"ax30002601\",\"chengpei\"", 10000);
     return ESP01S_OK;
 }
 

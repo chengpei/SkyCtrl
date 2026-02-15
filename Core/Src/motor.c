@@ -30,9 +30,9 @@ void Motor_Init(void)
     HAL_TIM_PWM_Start(&htim3, TIM_CHANNEL_4);
 
     // PID 初始化，输出限制 ±500
-    PID_Init(&pid_roll, 4.0f, 0.0f, 0.2f, -500, 500);
-    PID_Init(&pid_pitch, 4.0f, 0.0f, 0.2f, -500, 500);
-    PID_Init(&pid_yaw, 2.0f, 0.0f, 0.1f, -500, 500);
+    PID_Init(&pid_roll,  0.0f, 0.0f, 0.0f, -50, 50);
+    PID_Init(&pid_pitch, 0.0f, 0.0f, 0.0f, -50, 50);
+    PID_Init(&pid_yaw,   0.0f, 0.0f, 0.0f, -50, 50);
 
     Motor_StopAll();
 }

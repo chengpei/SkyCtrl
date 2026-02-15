@@ -18,7 +18,6 @@
 /* USER CODE END Header */
 /* Includes ------------------------------------------------------------------*/
 #include "main.h"
-#include "dma.h"
 #include "i2c.h"
 #include "tim.h"
 #include "usart.h"
@@ -72,7 +71,6 @@ ESP01S_Status_t status;
 uint8_t rx1_byte, rx2_byte;          // 单字节接收缓存
 uint8_t uart2_buf[256];   // 缓存 PC 发来的数据
 uint16_t uart2_idx = 0;              // 缓冲区索引
-int global_step = 0;  // 定义
 uint8_t esp_passthrough_enabled = 0;
 uint8_t heartbeat_tick = 0;
 uint8_t tcp_heartbeat_flag = 0;
@@ -108,7 +106,6 @@ int main(void)
 
   /* Initialize all configured peripherals */
   MX_GPIO_Init();
-  MX_DMA_Init();
   MX_TIM3_Init();
   MX_I2C1_Init();
   MX_TIM2_Init();
@@ -116,29 +113,38 @@ int main(void)
   MX_USART2_UART_Init();
   MX_TIM1_Init();
   /* USER CODE BEGIN 2 */
+  if (MPU6050_Init() == 0)
+  {
+    while (1) {
+      HAL_GPIO_TogglePin(GPIOC, GPIO_PIN_13);
+      HAL_Delay(100);
+    }
+  }
+  IMU_Init();
+  Mahony_Init(2.0f, 0.0f);// Kp=1.0, Ki=0
   HAL_UART_Receive_IT(&huart1, &rx1_byte, 1);
-  HAL_UART_Receive_IT(&huart2, &rx2_byte, 1);
+  // HAL_UART_Receive_IT(&huart2, &rx2_byte, 1);
   HAL_TIM_Base_Start_IT(&htim1);
-  // HAL_TIM_Base_Start_IT(&htim2);
+  HAL_TIM_Base_Start_IT(&htim2);
 
   // 初始化ESP01S
   status = ESP01S_Init(&huart1, 2000);
   status = ESP01S_ConnectWiFi();
   status = ESP01S_ConnectTCP();
 
-  // if (MPU6050_Init() == 0)
-  // {
-  //   while (1) {
-  //     HAL_GPIO_TogglePin(GPIOC, GPIO_PIN_13);
-  //     HAL_Delay(100);
-  //   }
-  // }
-  // IMU_Init();
-  // Mahony_Init(1.0f, 0.0f);  // Kp=1.0, Ki=0
+  if (esp_passthrough_enabled) {
+    HAL_GPIO_WritePin(GPIOC, GPIO_PIN_13, GPIO_PIN_SET);
+    HAL_Delay(300);
+    HAL_GPIO_TogglePin(GPIOC, GPIO_PIN_13); // 亮
+    HAL_Delay(300);
+    HAL_GPIO_TogglePin(GPIOC, GPIO_PIN_13);
+    HAL_Delay(300);
+    HAL_GPIO_TogglePin(GPIOC, GPIO_PIN_13); // 亮
+  }
   Motor_Init();
   Motor_Arm();     // 上电解锁 3 秒
-  // FlightControl_Init();
-  // FlightControl_Arm();
+  FlightControl_Init();
+  FlightControl_Arm();
 
   /* USER CODE END 2 */
 
@@ -156,23 +162,24 @@ int main(void)
       ControlInput_t ci = ESP01S_IRQ_GetControlInput();
       FlightControl_SetInput(&ci);
       HAL_GPIO_TogglePin(GPIOC, GPIO_PIN_13);
-      if (ci.btn_yaw_ccw == 1) { // 左
-        Motor_SetAll(1125);
-      } else if (ci.btn_yaw_cw == 1) { // 右
-        Motor_SetAll(1250);
-      } else if (ci.btn_down == 1) { // 下
-        Motor_SetAll(1375);
-      } else if (ci.btn_up == 1) { // 上
-        Motor_SetAll(1500);
-      } else {
-        Motor_SetAll(1000);
-      }
+      // if (ci.btn_yaw_ccw == 1) { // 左
+      //   Motor_SetAll(1200);
+      // } else if (ci.btn_yaw_cw == 1) { // 右
+      //   Motor_SetAll(1400);
+      // } else if (ci.btn_down == 1) { // 下
+      //   Motor_SetAll(1600);
+      // } else if (ci.btn_up == 1) { // 上
+      //   Motor_SetAll(1800);
+      // } else {
+      //   Motor_SetAll(1000);
+      // }
     }
-    // if (imu_attitude_ready_flag) {
-    //   imu_attitude_ready_flag = 0;
-    //   // MotorControl_Update(&att, target_roll, target_pitch, target_yaw); // 更新电机 PWM，已由飞行控制模块接管
-    //   FlightControl_Update(&att);
-    // }
+    if (imu_attitude_ready_flag) {
+      imu_attitude_ready_flag = 0;
+      IMU_Update(&imu); // 每 2ms 调用一次
+      Mahony_Update(&imu, 0.002f, &att); // dt = 2ms
+      FlightControl_Update(&att);
+    }
 
     /* USER CODE END WHILE */
 
@@ -225,8 +232,6 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
 {
   if(htim->Instance == TIM2)
   {
-    IMU_Update(&imu); // 每 2ms 调用一次
-    Mahony_Update(&imu, 0.002f, &att); // dt = 2ms
     imu_attitude_ready_flag = 1;
   } else if (htim->Instance == TIM1) {
     // 心跳处理
@@ -245,9 +250,9 @@ void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart)
     if (rx1_byte == '>')
     {
       esp_passthrough_enabled = 1;
-      HAL_GPIO_TogglePin(GPIOC, GPIO_PIN_13);
+      HAL_GPIO_WritePin(GPIOC, GPIO_PIN_13, GPIO_PIN_RESET);
     }
-    HAL_UART_Transmit_IT(&huart2, &rx1_byte, 1);
+    // HAL_UART_Transmit_IT(&huart2, &rx1_byte, 1);
     if (esp_passthrough_enabled) {
       ESP01S_IRQ_ProcessByte(rx1_byte);
     }
